@@ -103,3 +103,32 @@ app.post('/api/login', async (req, res) => {
 app.listen(port, () => {
     console.log(`Serwer API działa i nasłuchuje na porcie http://localhost:${port}`);
 });
+// --- DODAWANIE ROWERU ---
+app.post('/api/bikes', async (req, res) => {
+    const { user_id, name, type, total_km } = req.body;
+    try {
+        const result = await db.query(
+            'INSERT INTO bikes (user_id, name, type, total_km) VALUES ($1, $2, $3, $4) RETURNING *',
+            [user_id, name, type, total_km]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Błąd zapisu roweru:', err);
+        res.status(500).json({ error: 'Błąd serwera przy rowerze' });
+    }
+});
+
+// --- DODAWANIE TRASY ---
+app.post('/api/routes', async (req, res) => {
+    const { user_id, name, distance, duration, points_json } = req.body;
+    try {
+        const result = await db.query(
+            'INSERT INTO routes (user_id, name, distance, duration, points_json) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+            [user_id, name, distance, duration, points_json]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Błąd zapisu trasy:', err);
+        res.status(500).json({ error: 'Błąd serwera przy trasie' });
+    }
+});
