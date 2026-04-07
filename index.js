@@ -6,15 +6,10 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(cors());
-// Zwiększamy limit do 10MB, żeby trasy Live z tysiącami punktów GPS wchodziły bez problemu
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
-// --- SZPIEG ZAPYTAŃ ---
-app.use((req, res, next) => {
-    console.log(`[ OTRZYMANO STRZAŁ ] -> Metoda: ${req.method}, Cel: ${req.url}`);
-    next();
-});
-// POŁĄCZENIE Z BAZĄ DANYCH (Teraz jest tylko jedno i to poprawne!)
+// Zwiększamy limity dla ciężkich tras LIVE
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
 const db = new Pool({
     host: 'aws-0-eu-west-1.pooler.supabase.com',
     port: 6543,
@@ -24,51 +19,32 @@ const db = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
-// --- TESTY ---
-app.get('/', (req, res) => res.send('Backend Projekt Rower działa!'));
-
-app.get('/api/test-db', async (req, res) => {
-    try {
-        const result = await db.query('SELECT NOW()');
-        res.json({ status: 'sukces', czas_bazy: result.rows[0].now });
-    } catch (err) {
-        res.status(500).json({ status: 'błąd', wiadomosc: err.message });
-    }
+// LOGI DEBUGOWANIA - zobaczysz w Render.com co dokładnie puka do serwera
+app.use((req, res, next) => {
+    if (req.method === 'POST') console.log(`[POST] Cel: ${req.url}, Wielkość danych: ${JSON.stringify(req.body).length} bajtów`);
+    next();
 });
 
-// --- UŻYTKOWNICY ---
-app.post('/api/users', async (req, res) => {
-    const { email, password, nickname } = req.body;
-    try {
-        const result = await db.query(
-            'INSERT INTO users (email, password_hash, display_name) VALUES ($1, $2, $3) RETURNING id, email, display_name as nickname',
-            [email, password, nickname]
-        );
-        res.status(201).json({ status: 'sukces', dane: result.rows[0] });
-    } catch (err) {
-        res.status(500).json({ status: 'błąd', wiadomosc: 'Email zajęty lub błąd bazy.' });
-    }
-});
+app.get('/', (req, res) => res.send('API Projekt Rower – System Stabilny'));
 
+// --- LOGOWANIE (Zwraca ID potrzebne do synchronizacji) ---
 app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
     try {
         const result = await db.query('SELECT id, email, password_hash, display_name as nickname FROM users WHERE email = $1', [email]);
         if (result.rows.length === 0 || result.rows[0].password_hash !== password) {
-            return res.status(401).json({ wiadomosc: 'Błędne dane logowania.' });
+            return res.status(401).json({ wiadomosc: 'Błędne dane.' });
         }
-        res.json({ status: 'sukces', token: 'token_123', user: result.rows[0], id: result.rows[0].id, nickname: result.rows[0].nickname });
-    } catch (err) {
-        res.status(500).json({ wiadomosc: 'Błąd serwera.' });
-    }
+        res.json({ status: 'sukces', ...result.rows[0] });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- ROWER (Zapis i Odczyt) ---
+// --- ROWER (Zapis i synchronizacja) ---
 app.post('/api/bikes', async (req, res) => {
     const { user_id, name, type, total_km } = req.body;
     try {
         const result = await db.query(
-            'INSERT INTO bikes (user_id, name, type, total_km) VALUES ($1, $2, $3, $4) RETURNING *',
+            'INSERT INTO bikes (user_id, name, type, total_km) VALUES ($1, $2, $3, $4) RETURNING id, name, type, total_km as distance',
             [user_id, name, type, total_km]
         );
         res.status(201).json(result.rows[0]);
@@ -77,12 +53,12 @@ app.post('/api/bikes', async (req, res) => {
 
 app.get('/api/bikes/:userId', async (req, res) => {
     try {
-        const result = await db.query('SELECT id, name, type, total_km as "totalKm", total_km as distance FROM bikes WHERE user_id = $1', [req.params.userId]);
+        const result = await db.query('SELECT id, name, type, total_km as distance FROM bikes WHERE user_id = $1', [req.params.userId]);
         res.json(result.rows);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- TRASY (Zapis i Odczyt) ---
+// --- TRASY (Kluczowa poprawka dla LIVE) ---
 app.post('/api/routes', async (req, res) => {
     const { user_id, name, distance, duration, points_json } = req.body;
     try {
@@ -91,7 +67,10 @@ app.post('/api/routes', async (req, res) => {
             [user_id, name, distance, duration, points_json]
         );
         res.status(201).json(result.rows[0]);
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { 
+        console.error("BŁĄD SQL TRASY:", err.message);
+        res.status(500).json({ error: err.message }); 
+    }
 });
 
 app.get('/api/routes/:userId', async (req, res) => {
@@ -101,16 +80,16 @@ app.get('/api/routes/:userId', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- STREFY (Zapis i Odczyt) ---
+// --- STREFY (POST & GET) ---
 app.post('/api/turf', async (req, res) => {
     const { user_id, faction, zX, zY } = req.body;
     try {
-        const result = await db.query(
+        await db.query(
             `INSERT INTO turf_zones (user_id, faction, zx, zy) VALUES ($1, $2, $3, $4) 
-             ON CONFLICT (zx, zy) DO UPDATE SET faction = EXCLUDED.faction, user_id = EXCLUDED.user_id, captured_at = CURRENT_TIMESTAMP RETURNING *`,
+             ON CONFLICT (zx, zy) DO UPDATE SET faction = EXCLUDED.faction, user_id = EXCLUDED.user_id`,
             [user_id, faction, zX, zY]
         );
-        res.status(201).json(result.rows[0]);
+        res.status(201).json({ status: 'ok' });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -121,5 +100,4 @@ app.get('/api/turf', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// START SERWERA (Zawsze na końcu!)
-app.listen(port, () => console.log(`Serwer działa na porcie ${port}`));
+app.listen(port, () => console.log(`Serwer na porcie ${port}`));
