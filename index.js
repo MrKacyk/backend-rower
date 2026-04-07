@@ -8,6 +8,7 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json()); 
 
+// POŁĄCZENIE Z BAZĄ DANYCH (Teraz jest tylko jedno i to poprawne!)
 const db = new Pool({
     host: 'aws-0-eu-west-1.pooler.supabase.com',
     port: 6543,
