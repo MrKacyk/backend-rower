@@ -5,87 +5,58 @@ const { Pool } = require('pg');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Middleware (dodatki ułatwiające komunikację z aplikacją frontendową)
 app.use(cors());
 app.use(express.json()); 
 
-// Konfiguracja logowania do bazy w chmurze (Supabase) - Bezpieczny format
 const db = new Pool({
     host: 'aws-0-eu-west-1.pooler.supabase.com',
     port: 6543,
     user: 'postgres.isebxmteelfqrbfyghky',
-    password: 'Kacyk270194#94', // <-- Twoje normalne hasło z kratką
+    password: 'Kacyk270194#94', 
     database: 'postgres',
-    ssl: { rejectUnauthorized: false } // <-- Wymagane przez Supabase do bezpiecznych połączeń
+    ssl: { rejectUnauthorized: false }
 });
 
-// Zwykły test - czy sam serwer działa
-app.get('/', (req, res) => {
-    res.send('Serwer backendowy Projekt Rower działa!');
-});
+// --- TESTY ---
+app.get('/', (req, res) => res.send('Backend Projekt Rower działa!'));
 
-// Testowy endpoint - czy serwer umie gadać z bazą danych
 app.get('/api/test-db', async (req, res) => {
     try {
         const result = await db.query('SELECT NOW()');
-        res.json({ 
-            status: 'sukces', 
-            wiadomosc: 'Udało się połączyć z bazą PostgreSQL!', 
-            czas_bazy: result.rows[0].now 
-        });
+        res.json({ status: 'sukces', czas_bazy: result.rows[0].now });
     } catch (err) {
-        console.error('Błąd bazy danych:', err);
-        res.status(500).json({ status: 'błąd', wiadomosc: 'Nie udało się połączyć z bazą' });
+        res.status(500).json({ status: 'błąd', wiadomosc: err.message });
     }
 });
 
-// --- REJESTRACJA UŻYTKOWNIKA ---
+// --- UŻYTKOWNICY ---
 app.post('/api/users', async (req, res) => {
     const { email, password, nickname } = req.body;
     try {
         const result = await db.query(
-            'INSERT INTO users (email, password_hash, display_name) VALUES ($1, $2, $3) RETURNING id, email',
+            'INSERT INTO users (email, password_hash, display_name) VALUES ($1, $2, $3) RETURNING id, email, display_name as nickname',
             [email, password, nickname]
         );
-        res.status(201).json({
-            status: 'sukces',
-            wiadomosc: 'Użytkownik został pomyślnie dodany do bazy!',
-            dane: result.rows[0]
-        });
+        res.status(201).json({ status: 'sukces', dane: result.rows[0] });
     } catch (err) {
-        console.error('Błąd podczas rejestracji:', err);
-        res.status(500).json({ 
-            status: 'błąd', 
-            wiadomosc: 'Nie udało się zapisać użytkownika. Być może taki email jest już w bazie.' 
-        });
+        res.status(500).json({ status: 'błąd', wiadomosc: 'Email zajęty lub błąd bazy.' });
     }
 });
 
-// --- LOGOWANIE UŻYTKOWNIKA ---
 app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
     try {
-        const result = await db.query('SELECT * FROM users WHERE email = $1', [email]);
-        if (result.rows.length === 0) {
-            return res.status(401).json({ wiadomosc: 'Nie znaleziono takiego użytkownika.' });
+        const result = await db.query('SELECT id, email, password_hash, display_name as nickname FROM users WHERE email = $1', [email]);
+        if (result.rows.length === 0 || result.rows[0].password_hash !== password) {
+            return res.status(401).json({ wiadomosc: 'Błędne dane logowania.' });
         }
-        const user = result.rows[0];
-        if (user.password_hash !== password) {
-            return res.status(401).json({ wiadomosc: 'Błędne hasło.' });
-        }
-        res.json({
-            status: 'sukces',
-            token: 'bezpieczny_token_operacyjny_123',
-            nickname: user.display_name,
-            user: user
-        });
+        res.json({ status: 'sukces', token: 'token_123', user: result.rows[0], id: result.rows[0].id, nickname: result.rows[0].nickname });
     } catch (err) {
-        console.error('Błąd logowania:', err);
-        res.status(500).json({ wiadomosc: 'Błąd serwera podczas logowania.' });
+        res.status(500).json({ wiadomosc: 'Błąd serwera.' });
     }
 });
 
-// --- DODAWANIE ROWERU (POST) ---
+// --- ROWER (Zapis i Odczyt) ---
 app.post('/api/bikes', async (req, res) => {
     const { user_id, name, type, total_km } = req.body;
     try {
@@ -94,13 +65,17 @@ app.post('/api/bikes', async (req, res) => {
             [user_id, name, type, total_km]
         );
         res.status(201).json(result.rows[0]);
-    } catch (err) {
-        console.error('Błąd zapisu roweru:', err);
-        res.status(500).json({ error: 'Błąd serwera przy rowerze' });
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- DODAWANIE TRASY (POST) ---
+app.get('/api/bikes/:userId', async (req, res) => {
+    try {
+        const result = await db.query('SELECT id, name, type, total_km as "totalKm", total_km as distance FROM bikes WHERE user_id = $1', [req.params.userId]);
+        res.json(result.rows);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- TRASY (Zapis i Odczyt) ---
 app.post('/api/routes', async (req, res) => {
     const { user_id, name, distance, duration, points_json } = req.body;
     try {
@@ -109,69 +84,35 @@ app.post('/api/routes', async (req, res) => {
             [user_id, name, distance, duration, points_json]
         );
         res.status(201).json(result.rows[0]);
-    } catch (err) {
-        console.error('Błąd zapisu trasy:', err);
-        res.status(500).json({ error: 'Błąd serwera przy trasie' });
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- PRZEJMOWANIE STREFY TURF WARS (POST) ---
+app.get('/api/routes/:userId', async (req, res) => {
+    try {
+        const result = await db.query('SELECT *, points_json as points FROM routes WHERE user_id = $1 ORDER BY created_at DESC', [req.params.userId]);
+        res.json(result.rows);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- STREFY (Zapis i Odczyt) ---
 app.post('/api/turf', async (req, res) => {
     const { user_id, faction, zX, zY } = req.body;
     try {
         const result = await db.query(
-            `INSERT INTO turf_zones (user_id, faction, zx, zy) 
-             VALUES ($1, $2, $3, $4) 
-             ON CONFLICT (zx, zy) 
-             DO UPDATE SET faction = EXCLUDED.faction, user_id = EXCLUDED.user_id, captured_at = CURRENT_TIMESTAMP 
-             RETURNING *`,
+            `INSERT INTO turf_zones (user_id, faction, zx, zy) VALUES ($1, $2, $3, $4) 
+             ON CONFLICT (zx, zy) DO UPDATE SET faction = EXCLUDED.faction, user_id = EXCLUDED.user_id, captured_at = CURRENT_TIMESTAMP RETURNING *`,
             [user_id, faction, zX, zY]
         );
         res.status(201).json(result.rows[0]);
-    } catch (err) {
-        console.error('Błąd zapisu strefy w SQL:', err);
-        res.status(500).json({ error: 'Błąd serwera przy strefie' });
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ==========================================
-// --- NOWE: FUNKCJE ODCZYTU Z BAZY (GET) ---
-// ==========================================
-
-// Pobieranie rowerów danego użytkownika
-app.get('/api/bikes/:userId', async (req, res) => {
-    try {
-        const result = await db.query('SELECT * FROM bikes WHERE user_id = $1', [req.params.userId]);
-        res.json(result.rows);
-    } catch (err) {
-        console.error('Błąd odczytu rowerów:', err);
-        res.status(500).json({ error: 'Błąd pobierania rowerów' });
-    }
-});
-
-// Pobieranie tras danego użytkownika
-app.get('/api/routes/:userId', async (req, res) => {
-    try {
-        const result = await db.query('SELECT * FROM routes WHERE user_id = $1 ORDER BY created_at DESC', [req.params.userId]);
-        res.json(result.rows);
-    } catch (err) {
-        console.error('Błąd odczytu tras:', err);
-        res.status(500).json({ error: 'Błąd pobierania tras' });
-    }
-});
-
-// Pobieranie wszystkich przejętych stref wojen
 app.get('/api/turf', async (req, res) => {
     try {
-        const result = await db.query('SELECT * FROM turf_zones');
+        const result = await db.query('SELECT faction, zx as "zX", zy as "zY" FROM turf_zones');
         res.json(result.rows);
-    } catch (err) {
-        console.error('Błąd odczytu stref:', err);
-        res.status(500).json({ error: 'Błąd pobierania stref' });
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Uruchomienie nasłuchiwania serwera (ZAWSZE NA SAMYM DOLE PLIKU!)
-app.listen(port, () => {
-    console.log(`Serwer API działa i nasłuchuje na porcie http://localhost:${port}`);
-});
+// START SERWERA (Zawsze na końcu!)
+app.listen(port, () => console.log(`Serwer działa na porcie ${port}`));
