@@ -132,3 +132,23 @@ app.post('/api/routes', async (req, res) => {
         res.status(500).json({ error: 'Błąd serwera przy trasie' });
     }
 });
+
+// --- PRZEJMOWANIE STREFY (TURF WARS) ---
+app.post('/api/turf', async (req, res) => {
+    const { user_id, faction, zX, zY } = req.body;
+    try {
+        // Magia UPSERT: jeśli kwadrat (zX, zY) już istnieje, nadpisz jego frakcję i właściciela!
+        const result = await db.query(
+            `INSERT INTO turf_zones (user_id, faction, zx, zy) 
+             VALUES ($1, $2, $3, $4) 
+             ON CONFLICT (zx, zy) 
+             DO UPDATE SET faction = EXCLUDED.faction, user_id = EXCLUDED.user_id, captured_at = CURRENT_TIMESTAMP 
+             RETURNING *`,
+            [user_id, faction, zX, zY]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Błąd zapisu strefy w SQL:', err);
+        res.status(500).json({ error: 'Błąd serwera przy strefie' });
+    }
+});
