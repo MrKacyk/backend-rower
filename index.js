@@ -6,7 +6,9 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' })); 
+// Zwiększamy limit do 10MB, żeby trasy Live z tysiącami punktów GPS wchodziły bez problemu
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 // --- SZPIEG ZAPYTAŃ ---
 app.use((req, res, next) => {
     console.log(`[ OTRZYMANO STRZAŁ ] -> Metoda: ${req.method}, Cel: ${req.url}`);
