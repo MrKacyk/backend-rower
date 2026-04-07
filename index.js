@@ -7,7 +7,11 @@ const port = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json()); 
-
+// --- SZPIEG ZAPYTAŃ ---
+app.use((req, res, next) => {
+    console.log(`[ OTRZYMANO STRZAŁ ] -> Metoda: ${req.method}, Cel: ${req.url}`);
+    next();
+});
 // POŁĄCZENIE Z BAZĄ DANYCH (Teraz jest tylko jedno i to poprawne!)
 const db = new Pool({
     host: 'aws-0-eu-west-1.pooler.supabase.com',
