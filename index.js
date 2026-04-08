@@ -76,6 +76,18 @@ app.post('/api/routes', async (req, res) => {
     }
 });
 
+// --- TRASY (Usuwanie) ---
+app.delete('/api/routes/:id', async (req, res) => {
+    try {
+        await db.query('DELETE FROM routes WHERE id = $1', [req.params.id]);
+        console.log(`✅ TRASA ${req.params.id} USUNIĘTA Z SQL`);
+        res.json({ status: 'sukces' });
+    } catch (err) { 
+        console.error("❌ BŁĄD USUWANIA TRASY:", err.message);
+        res.status(500).json({ error: err.message }); 
+    }
+});
+
 app.get('/api/routes/:userId', async (req, res) => {
     try {
         const result = await db.query('SELECT *, points_json as points FROM routes WHERE user_id = $1 ORDER BY created_at DESC', [req.params.userId]);
