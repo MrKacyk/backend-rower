@@ -31,7 +31,7 @@ app.get('/', (req, res) => res.send('API Projekt Rower – System Stabilny'));
 app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
     try {
-        const result = await db.query('SELECT id, email, password_hash, display_name as nickname FROM users WHERE email = $1', [email]);
+        const result = await db.query('SELECT id, email, password_hash, display_name as nickname, avatar FROM users WHERE email = $1', [email]);
         if (result.rows.length === 0 || result.rows[0].password_hash !== password) {
             return res.status(401).json({ wiadomosc: 'Błędne dane.' });
         }
@@ -99,6 +99,18 @@ app.delete('/api/routes/:id', async (req, res) => {
     }
 });
 
+// --- UŻYTKOWNICY (Aktualizacja Awatara) ---
+app.put('/api/users/:id/avatar', async (req, res) => {
+    const { avatar } = req.body;
+    try {
+        await db.query('UPDATE users SET avatar = $1 WHERE id = $2', [avatar, req.params.id]);
+        console.log(`✅ AWATAR ZAKTUALIZOWANY DLA USERA: ${req.params.id}`);
+        res.json({ status: 'sukces' });
+    } catch (err) { 
+        console.error("❌ BŁĄD ZAPISU AWATARA:", err.message);
+        res.status(500).json({ error: err.message }); 
+    }
+});
 app.get('/api/routes/:userId', async (req, res) => {
     try {
         const result = await db.query('SELECT *, points_json as points FROM routes WHERE user_id = $1 ORDER BY created_at DESC', [req.params.userId]);
