@@ -58,17 +58,20 @@ app.get('/api/bikes/:userId', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- TRASY (Kluczowa poprawka dla LIVE) ---
+// --- TRASY (Zapis) ---
 app.post('/api/routes', async (req, res) => {
-    const { user_id, name, distance, duration, points_json } = req.body;
+    // Dodaliśmy bike_id do odbieranych danych:
+    const { user_id, bike_id, name, distance, duration, points_json } = req.body;
     try {
         const result = await db.query(
-            'INSERT INTO routes (user_id, name, distance, duration, points_json) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-            [user_id, name, distance, duration, points_json]
+            // Dodaliśmy bike_id do zapytania SQL:
+            'INSERT INTO routes (user_id, bike_id, name, distance, duration, points_json) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            [user_id, bike_id, name, distance, duration, points_json]
         );
+        console.log("✅ TRASA ZAPISANA W SQL");
         res.status(201).json(result.rows[0]);
     } catch (err) { 
-        console.error("BŁĄD SQL TRASY:", err.message);
+        console.error("❌ BŁĄD SQL TRASA:", err.message);
         res.status(500).json({ error: err.message }); 
     }
 });
