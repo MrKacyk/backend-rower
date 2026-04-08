@@ -57,6 +57,17 @@ app.get('/api/bikes/:userId', async (req, res) => {
         res.json(result.rows);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
+// --- ROWER (Usuwanie) ---
+app.delete('/api/bikes/:id', async (req, res) => {
+    try {
+        await db.query('DELETE FROM bikes WHERE id = $1', [req.params.id]);
+        console.log(`✅ ROWER ${req.params.id} USUNIĘTY Z SQL`);
+        res.json({ status: 'sukces' });
+    } catch (err) { 
+        console.error("❌ BŁĄD USUWANIA ROWERU:", err.message);
+        res.status(500).json({ error: err.message }); 
+    }
+});
 
 // --- TRASY (Zapis) ---
 app.post('/api/routes', async (req, res) => {
