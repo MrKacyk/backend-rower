@@ -69,6 +69,18 @@ app.delete('/api/bikes/:id', async (req, res) => {
     }
 });
 
+// --- ROWER (Aktualizacja dystansu) ---
+app.put('/api/bikes/:id/distance', async (req, res) => {
+    const { distance } = req.body;
+    try {
+        await db.query('UPDATE bikes SET total_km = $1 WHERE id = $2', [distance, req.params.id]);
+        console.log(`✅ ROWER ${req.params.id} ZAKTUALIZOWANY (Nowy dystans: ${distance} km)`);
+        res.json({ status: 'sukces' });
+    } catch (err) { 
+        console.error("❌ BŁĄD AKTUALIZACJI ROWERU:", err.message);
+        res.status(500).json({ error: err.message }); 
+    }
+});
 // --- TRASY (Zapis) ---
 app.post('/api/routes', async (req, res) => {
     // Dodaliśmy bike_id do odbieranych danych:
