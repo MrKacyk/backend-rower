@@ -99,6 +99,25 @@ app.post('/api/routes', async (req, res) => {
     }
 });
 
+// --- REJESTRACJA (Tworzenie nowego użytkownika) ---
+app.post('/api/users', async (req, res) => {
+    const { email, password, nickname } = req.body;
+    try {
+        const result = await db.query(
+            'INSERT INTO users (email, password_hash, display_name) VALUES ($1, $2, $3) RETURNING id',
+            [email, password, nickname]
+        );
+        console.log(`✅ NOWY UŻYTKOWNIK UTWORZONY: ${nickname}`);
+        res.status(201).json({ status: 'sukces', id: result.rows[0].id });
+    } catch (err) {
+        console.error("❌ BŁĄD REJESTRACJI:", err.message);
+        if (err.code === '23505') { // Błąd unikalności (np. email już istnieje)
+            return res.status(400).json({ wiadomosc: 'Ten email jest już zajęty.' });
+        }
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // --- TRASY (Usuwanie) ---
 app.delete('/api/routes/:id', async (req, res) => {
     try {
